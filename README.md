@@ -9,34 +9,34 @@ export PATH="$HOME/admixture/dist/admixture_linux-1.3.0:$PATH"
 ```
 
 # 1000 Genomes population overview
-| Code     | Population Name                          | Region/Country              | Superpopulation |
-|----------|-------------------------------------------|-----------------------------|-----------------|
-| AFR_ACB  | African Caribbeans in Barbados            | Barbados                    | AFR (African)   |
-| AFR_ASW  | African Ancestry in Southwest US          | United States               | AFR (African)   |
-| AFR_ESN  | Esan in Nigeria                           | Nigeria                     | AFR (African)   |
-| AFR_GWD  | Gambian in Western Divisions              | The Gambia                  | AFR (African)   |
-| AFR_LWK  | Luhya in Webuye                           | Kenya                       | AFR (African)   |
-| AFR_MSL  | Mende in Sierra Leone                     | Sierra Leone                | AFR (African)   |
-| AFR_YRI  | Yoruba in Ibadan                          | Nigeria                     | AFR (African)   |
-| AMR_CLM  | Colombians in Medellín                    | Colombia                    | AMR (Admixed American) |
-| AMR_MXL  | Mexican Ancestry in Los Angeles           | United States (Mexico)      | AMR (Admixed American) |
-| AMR_PEL  | Peruvians in Lima                         | Peru                        | AMR (Admixed American) |
-| AMR_PUR  | Puerto Ricans in Puerto Rico              | Puerto Rico                 | AMR (Admixed American) |
-| EAS_CDX  | Chinese Dai in Xishuangbanna              | China                       | EAS (East Asian)|
-| EAS_CHB  | Han Chinese in Beijing                    | China                       | EAS (East Asian)|
-| EAS_CHS  | Southern Han Chinese                      | China                       | EAS (East Asian)|
-| EAS_JPT  | Japanese in Tokyo                         | Japan                       | EAS (East Asian)|
-| EAS_KHV  | Kinh in Ho Chi Minh City                 | Vietnam                     | EAS (East Asian)|
-| EUR_CEU  | Utah Residents (CEPH) with NW European ancestry | United States          | EUR (European)  |
-| EUR_FIN  | Finnish in Finland                        | Finland                     | EUR (European)  |
-| EUR_GBR  | British in England and Scotland           | United Kingdom              | EUR (European)  |
-| EUR_IBS  | Iberian Population in Spain               | Spain                       | EUR (European)  |
-| EUR_TSI  | Toscani in Italy                          | Italy                       | EUR (European)  |
-| SAS_BEB  | Bengali in Bangladesh                     | Bangladesh                  | SAS (South Asian)|
-| SAS_GIH  | Gujarati Indian in Houston                | United States (India)       | SAS (South Asian)|
-| SAS_ITU  | Indian Telugu in the UK                   | United Kingdom (India)      | SAS (South Asian)|
-| SAS_PJL  | Punjabi in Lahore                         | Pakistan                    | SAS (South Asian)|
-| SAS_STU  | Sri Lankan Tamil in the UK                | United Kingdom (Sri Lanka)  | SAS (South Asian)|
+| Code     | Population Name                          | Superpopulation        |
+|----------|-------------------------------------------|------------------------|
+| AFR_ACB  | African Caribbeans in Barbados            | AFR (African)          |
+| AFR_ASW  | African Ancestry in Southwest US          | AFR (African)          |
+| AFR_ESN  | Esan in Nigeria                           | AFR (African)          |
+| AFR_GWD  | Gambian in Western Divisions              | AFR (African)          |
+| AFR_LWK  | Luhya in Webuye                           | AFR (African)          |
+| AFR_MSL  | Mende in Sierra Leone                     | AFR (African)          |
+| AFR_YRI  | Yoruba in Ibadan                          | AFR (African)          |
+| AMR_CLM  | Colombians in Medellín                    | AMR (Admixed American) |
+| AMR_MXL  | Mexican Ancestry in Los Angeles           | AMR (Admixed American) |
+| AMR_PEL  | Peruvians in Lima                         | AMR (Admixed American) |
+| AMR_PUR  | Puerto Ricans in Puerto Rico              | AMR (Admixed American) |
+| EAS_CDX  | Chinese Dai in Xishuangbanna              | EAS (East Asian)       |
+| EAS_CHB  | Han Chinese in Beijing                    | EAS (East Asian)       |
+| EAS_CHS  | Southern Han Chinese                      | EAS (East Asian)       |
+| EAS_JPT  | Japanese in Tokyo                         | EAS (East Asian)       |
+| EAS_KHV  | Kinh in Ho Chi Minh City                  | EAS (East Asian)       |
+| EUR_CEU  | Utah Residents (CEPH) with NW European ancestry | EUR (European)   |
+| EUR_FIN  | Finnish in Finland                        | EUR (European)         |
+| EUR_GBR  | British in England and Scotland           | EUR (European)         |
+| EUR_IBS  | Iberian Population in Spain               | EUR (European)         |
+| EUR_TSI  | Toscani in Italy                          | EUR (European)         |
+| SAS_BEB  | Bengali in Bangladesh                     | SAS (South Asian)      |
+| SAS_GIH  | Gujarati Indian in Houston                | SAS (South Asian)      |
+| SAS_ITU  | Indian Telugu in the UK                   | SAS (South Asian)      |
+| SAS_PJL  | Punjabi in Lahore                         | SAS (South Asian)      |
+| SAS_STU  | Sri Lankan Tamil in the UK                | SAS (South Asian)      |
 
 ## Step 1: Merge your plink files with the 1KG reference
 
@@ -166,29 +166,15 @@ df_long <- df %>%
   select(FID, IID, starts_with("Q_")) %>%
   pivot_longer(cols = starts_with("Q_"), names_to = "Ancestry_Component", values_to = "Proportion")
 
-palette used in the bar plot
-fill_colors <- scale_fill_discrete()$palette(26)
-
 # Plot
 df_long %>% filter(grepl("pash1", FID)) %>% ggplot(aes(x = IID, y = Proportion, fill = Ancestry_Component)) +
   geom_bar(stat = "identity", width = 1) +
-  theme_minimal(base_size = 12) +
-  theme(
-    axis.text.x = element_blank(),
-    axis.ticks.x = element_blank(),
-    panel.grid = element_blank(),
-    legend.position = "right",
-    plot.background = element_rect(fill = "white", color = "white"),  # Set white background
-    panel.background = element_rect(fill = "white", color = "white")  # Ensure panel is white as well
-  ) + scale_fill_manual(values = fill_colors)  +
   labs(title = "Ancestry Proportions per Individual", x = "Individuals", y = "Proportion") -> p1
-
 # Save the plot
 ggsave("barplot.jpeg", plot = p1, width = 12, height = 6, dpi = 600, device = "jpeg")
 
 ```
 ## Step 7: Map to principal components (optinal)
-
 ```R
 library(ggplot2)
 pca_data <- read.table("your_pca_results.mds", header = TRUE, stringsAsFactors = FALSE) # e.g. from RICOPILI or EIGENSTRAT
@@ -203,13 +189,9 @@ merged_data$Ancestry_Prefix <- gsub("Q_([A-Za-z]+)_.*", "\\1", merged_data$Ances
 head(merged_data)
 # Create the scatter plot
 ggplot(merged_data, aes(x = C1, y = C2, color = Ancestry_Inf, shape = Ancestry_Prefix)) +
-  geom_point(size = 2, alpha = 0.8) +
+  geom_point(size = 2) +
   theme_minimal(base_size = 12) +
   labs(title = "PC1 vs PC2 with inferred Ancestry", x = "PC1 (C1)", y = "PC2 (C2)", color = "Ancestry_Inf", shape = "Ancestry Prefix") +
-    scale_shape_manual(values = c("AFR" = 16, "AMR" = 17, "EAS" = 8, "EUR" = 19, "SAS" = 20, "MIX" = 5)) +  # Shape per prefix
-  theme(legend.position = "right",
-        plot.background = element_rect(fill = "white", color = "white"),
-        panel.background = element_rect(fill = "white", color = "white"))
-
+    scale_shape_manual(values = c("AFR" = 16, "AMR" = 17, "EAS" = 8, "EUR" = 19, "SAS" = 20, "MIX" = 5))  # Shape per prefix
 # Save the plot
 ggsave("pc1pc2_scatterplot.jpeg", width = 8, height = 6, dpi = 600, device = "jpeg")
