@@ -1,13 +1,45 @@
 # ancestry1KG
 
 Inferring ancestry using the 1000 Genomes high coverage reference and admixture (https://dalexander.github.io/admixture/)
+
 ```
 wget https://dalexander.github.io/admixture/binaries/admixture_linux-1.3.0.tar.gz
 tar -xvf admixture_linux-1.3.0.tar.gz
 export PATH="$HOME/admixture/dist/admixture_linux-1.3.0:$PATH"
 ```
 
+# 1000 Genomes population overview
+| Code     | Population Name                          | Region/Country              | Superpopulation |
+|----------|-------------------------------------------|-----------------------------|-----------------|
+| AFR_ACB  | African Caribbeans in Barbados            | Barbados                    | AFR (African)   |
+| AFR_ASW  | African Ancestry in Southwest US          | United States               | AFR (African)   |
+| AFR_ESN  | Esan in Nigeria                           | Nigeria                     | AFR (African)   |
+| AFR_GWD  | Gambian in Western Divisions              | The Gambia                  | AFR (African)   |
+| AFR_LWK  | Luhya in Webuye                           | Kenya                       | AFR (African)   |
+| AFR_MSL  | Mende in Sierra Leone                     | Sierra Leone                | AFR (African)   |
+| AFR_YRI  | Yoruba in Ibadan                          | Nigeria                     | AFR (African)   |
+| AMR_CLM  | Colombians in Medellín                    | Colombia                    | AMR (Admixed American) |
+| AMR_MXL  | Mexican Ancestry in Los Angeles           | United States (Mexico)      | AMR (Admixed American) |
+| AMR_PEL  | Peruvians in Lima                         | Peru                        | AMR (Admixed American) |
+| AMR_PUR  | Puerto Ricans in Puerto Rico              | Puerto Rico                 | AMR (Admixed American) |
+| EAS_CDX  | Chinese Dai in Xishuangbanna              | China                       | EAS (East Asian)|
+| EAS_CHB  | Han Chinese in Beijing                    | China                       | EAS (East Asian)|
+| EAS_CHS  | Southern Han Chinese                      | China                       | EAS (East Asian)|
+| EAS_JPT  | Japanese in Tokyo                         | Japan                       | EAS (East Asian)|
+| EAS_KHV  | Kinh in Ho Chi Minh City                 | Vietnam                     | EAS (East Asian)|
+| EUR_CEU  | Utah Residents (CEPH) with NW European ancestry | United States          | EUR (European)  |
+| EUR_FIN  | Finnish in Finland                        | Finland                     | EUR (European)  |
+| EUR_GBR  | British in England and Scotland           | United Kingdom              | EUR (European)  |
+| EUR_IBS  | Iberian Population in Spain               | Spain                       | EUR (European)  |
+| EUR_TSI  | Toscani in Italy                          | Italy                       | EUR (European)  |
+| SAS_BEB  | Bengali in Bangladesh                     | Bangladesh                  | SAS (South Asian)|
+| SAS_GIH  | Gujarati Indian in Houston                | United States (India)       | SAS (South Asian)|
+| SAS_ITU  | Indian Telugu in the UK                   | United Kingdom (India)      | SAS (South Asian)|
+| SAS_PJL  | Punjabi in Lahore                         | Pakistan                    | SAS (South Asian)|
+| SAS_STU  | Sri Lankan Tamil in the UK                | United Kingdom (Sri Lanka)  | SAS (South Asian)|
+
 ## Step 1: Merge your plink files with the 1KG reference
+
 Note that the file needs to be QCed and on hg38
 
 ```bash
@@ -19,13 +51,17 @@ plink --bfile 1kg_$prefix.merged --geno 0.05 --make-bed --out 1kg_$prefix.geno.0
 ```
 
 ## Step 2: Pruning
-The admixture manual recommends to prune the input files. <br>
+
+The admixture manual recommends to prune the input files. `<br>`
 The first command targets for removal each SNP that has an R2 value of greater than 01 with any other SNP within a 50-SNP sliding window (advanced by 10 SNPs each time).
+
 ```bash
 plink --bfile 1kg_$prefix.geno.05.merged --indep-pairwise 50 10 0.1 
 plink --bfile 1kg_$prefix.geno.05.merged --extract plink.prune.in --make-bed --out 1kg_$prefix.geno.05.merged.pruned
-``` 
+```
+
 ## Step 3: Generate .pop file
+
 In order to run supervised ancestry inference a .pop file indicating the known ancestry is needed.
 
 ```bash
@@ -45,6 +81,135 @@ awk '{
 ```
 
 ## Step 4: Run ADMIXTURE
+
 ```bash
+# run admixture [options] inputFile K
 admixture --supervised --seed 666 -C 10  -j16 1kg_scz_pash1.geno.05.merged.pruned.bed 26
 ```
+
+## Step 5: Mapping
+
+```R
+# Load necessary library
+library(dplyr)
+library(tidyr)
+
+# Define your prefix (from an environment variable or hardcoded)
+prefix <- "pash1"
+
+# Build base path
+base <- paste0("1kg_scz_", prefix, ".geno.05.merged.pruned")
+
+# Build file names
+fam_file <- paste0(base, ".fam")
+q_file   <- paste0(base, ".26.Q")
+pop_file <- paste0(base, ".pop")
+
+# Read each file
+fam <- read.table(fam_file, header = FALSE)
+q   <- read.table(q_file, header = FALSE)
+pop <- read.table(pop_file, header = FALSE)
+
+# Combine them as a space-separated string (like for a shell command or input list)
+df <- cbind(fam, q, pop)
+
+# Define and assign all column names
+base_cols <- c("FID", "IID", "PID", "MID", "Sex", "Pheno", )
+q_cols <- paste0("Q", 1:num_q)
+final_col <- "Ancestry_Pheno"
+all_cols <- c(base_cols, q_cols, final_col)
+colnames(df) <- all_cols
+
+# Compute average Q values per ancestry
+avg_q <- df %>%
+  group_by(.data[[final_col]]) %>%
+  summarise(across(all_of(q_cols), mean), .groups = "drop")
+
+print(avg_q)
+
+# Determine which ancestry corresponds to each Q column
+q_labels <- colnames(avg_q)[2:27]  # Dynamically use num_q to get Q columns
+ancestry_labels <- apply(avg_q[, q_labels], 2, function(x) {
+  avg_q[[final_col]][which.max(x)]  # Find the ancestry with the highest value for each Q
+})
+
+new_colnames <- paste0("Q_", ancestry_labels)
+# Combine all labels
+colnames(df) <- c(base_cols, new_colnames, final_col)
+
+df <- df %>%
+  # Step 1: Find the maximum Q-value for each row
+  mutate(SortIndex = apply(select(., starts_with("Q_")), 1, max)) %>%
+  
+  # Step 2: Assign Ancestry_Inf based on the column associated with the maximum Q-value
+  mutate(
+    Ancestry_Inf = case_when(
+      SortIndex > 0.50 ~ names(select(., starts_with("Q_")))[apply(select(., starts_with("Q_")), 1, which.max)],
+      TRUE ~ "MIX"  # If no ancestry exceeds 0.50, mark as "mixed"
+    )
+  ) %>%
+  
+  # Step 3: Sort the data by Ancestry_Inf and SortIndex in descending order
+  arrange(Ancestry_Inf, desc(SortIndex)) %>%
+  
+  # Step 4: Preserve the new order of IID for plotting
+  mutate(IID = factor(IID, levels = IID))
+
+# Save the annotated output
+write.table(df, "annotated_Q_file.txt", quote = FALSE, row.names = FALSE, col.names = TRUE, sep = "\t")
+```
+
+## Step 6: Barplot (optional)
+```R
+library(ggplot2)
+df_long <- df %>%
+  select(FID, IID, starts_with("Q_")) %>%
+  pivot_longer(cols = starts_with("Q_"), names_to = "Ancestry_Component", values_to = "Proportion")
+
+palette used in the bar plot
+fill_colors <- scale_fill_discrete()$palette(26)
+
+# Plot
+df_long %>% filter(grepl("pash1", FID)) %>% ggplot(aes(x = IID, y = Proportion, fill = Ancestry_Component)) +
+  geom_bar(stat = "identity", width = 1) +
+  theme_minimal(base_size = 12) +
+  theme(
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    panel.grid = element_blank(),
+    legend.position = "right",
+    plot.background = element_rect(fill = "white", color = "white"),  # Set white background
+    panel.background = element_rect(fill = "white", color = "white")  # Ensure panel is white as well
+  ) + scale_fill_manual(values = fill_colors)  +
+  labs(title = "Ancestry Proportions per Individual", x = "Individuals", y = "Proportion") -> p1
+
+# Save the plot
+ggsave("barplot.jpeg", plot = p1, width = 12, height = 6, dpi = 600, device = "jpeg")
+
+```
+## Step 7: Map to principal components (optinal)
+
+```R
+library(ggplot2)
+pca_data <- read.table("your_pca_results.mds", header = TRUE, stringsAsFactors = FALSE) # e.g. from RICOPILI or EIGENSTRAT
+annotated_q_data <- read.table("annotated_Q_file.txt", header = TRUE, stringsAsFactors = FALSE)
+
+# Merge the two datasets on FID and IID
+merged_data <- pca_data %>%
+  inner_join(annotated_q_data, by = c("FID", "IID"))
+
+# Create a new column for the prefix (e.g., AFR, EUR)
+merged_data$Ancestry_Prefix <- gsub("Q_([A-Za-z]+)_.*", "\\1", merged_data$Ancestry_Inf)  # Extract ancestry prefix
+head(merged_data)
+# Create the scatter plot
+ggplot(merged_data, aes(x = C1, y = C2, color = Ancestry_Inf, shape = Ancestry_Prefix)) +
+  geom_point(size = 2, alpha = 0.8) +
+  theme_minimal(base_size = 12) +
+  labs(title = "PC1 vs PC2 with inferred Ancestry", x = "PC1 (C1)", y = "PC2 (C2)", color = "Ancestry_Inf", shape = "Ancestry Prefix") +
+    scale_shape_manual(values = c("AFR" = 16, "AMR" = 17, "EAS" = 8, "EUR" = 19, "SAS" = 20, "MIX" = 5)) +  # Shape per prefix
+  theme(legend.position = "right",
+        plot.background = element_rect(fill = "white", color = "white"),
+        panel.background = element_rect(fill = "white", color = "white"))
+
+# Save the plot
+ggsave("pc1pc2_scatterplot.jpeg", width = 8, height = 6, dpi = 600, device = "jpeg")
