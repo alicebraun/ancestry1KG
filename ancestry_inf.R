@@ -4,14 +4,13 @@ library(ggplot2)
 library(tidyr)
 
 # Define your prefix (from an environment variable or hardcoded)
-prefix <- "pash1"
-k <- "26"
+prefix <- "your_prefic"
 # Build base path
-base <- paste0("1kg_scz_", prefix, ".geno.05.merged.pruned")
+base <- paste0("1kg_", prefix, ".geno.05.merged.pruned")
 
 # Build file names
 fam_file <- paste0(base, ".fam")
-q_file   <- paste0(base, "."k".Q")
+q_file   <- paste0(base, ".26.Q")
 pop_file <- paste0(base, ".pop")
 
 # Read each file
@@ -23,8 +22,8 @@ pop <- read.table(pop_file, header = FALSE)
 df <- cbind(fam, q, pop)
 
 # Define and assign all column names
-base_cols <- c("FID", "IID", "PID", "MID", "Sex", "Pheno", )
-q_cols <- paste0("Q", 1:num_q)
+base_cols <- c("FID", "IID", "PID", "MID", "Sex", "Pheno")
+q_cols <- paste0("Q", 1:26)
 final_col <- "Ancestry_Pheno"
 all_cols <- c(base_cols, q_cols, final_col)
 colnames(df) <- all_cols
@@ -63,8 +62,6 @@ df <- df %>%
   
   # Step 4: Preserve the new order of IID for plotting
   mutate(IID = factor(IID, levels = IID))
-
-
 
 # Save the annotated output
 write.table(df, "annotated_Q_file.txt", quote = FALSE, row.names = FALSE, col.names = TRUE, sep = "\t")

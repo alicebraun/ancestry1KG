@@ -84,7 +84,7 @@ awk '{
 
 ```bash
 # run admixture [options] inputFile K
-admixture --supervised --seed 666 -C 10  -j16 1kg_scz_pash1.geno.05.merged.pruned.bed 26
+admixture --supervised --seed 666 -C 10  -j16 1kg_$prefix.geno.05.merged.pruned.bed 26
 ```
 
 ## Step 5: Mapping
@@ -95,7 +95,7 @@ library(dplyr)
 library(tidyr)
 
 # Define your prefix (from an environment variable or hardcoded)
-prefix <- "pash1"
+prefix <- "your_prefix]"
 
 # Build base path
 base <- paste0("1kg_scz_", prefix, ".geno.05.merged.pruned")
