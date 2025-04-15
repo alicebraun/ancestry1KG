@@ -1,4 +1,11 @@
 #!/bin/bash
+#SBATCH --job-name=admixture
+#SBATCH --output=tmp/ancestry1KG_%j.out
+#SBATCH --error=tmp/ancestry1KG_%j.err
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=16
+#SBATCH --time=05:00:00
+#SBATCH --mem=32G
 
 set -euo pipefail
 
@@ -6,14 +13,20 @@ echo "=============================================="
 echo "  1KG ADMIXTURE Ancestry Inference Pipeline   "
 echo "=============================================="
 
-# Prompt for user inputs
-read -rp "Enter your PLINK input prefix (e.g. genotypes.bed, omitting .bed): " plink_input
-read -rp "Enter an output prefix : " prefix
+# ---- Parse inputs (non-interactive) ---- #
+if [ "$#" -ne 2 ]; then
+  echo "Usage: sbatch $0 <plink_input_prefix> <output_prefix>"
+  exit 1
+fi
+
+mkdir -p tmp
+plink_input="$1"
+prefix="$2"
 
 THREADS=16
 K=26
 
-# Check if input files exist
+# ---- Validate input files ---- #
 for ext in bed bim fam; do
   if [ ! -f "${plink_input}.${ext}" ]; then
     echo "Error: ${plink_input}.${ext} not found!"
@@ -21,56 +34,82 @@ for ext in bed bim fam; do
   fi
 done
 
-# ---- Step 1–3: Merge, QC, Prune, Create .pop ---- #
+# ---- Step 1: Merge ---- #
+merged="1kg_${prefix}.merged"
+if [ ! -f "${merged}.bed" ]; then
+  echo "Merging with 1KG reference..."
+  plink --bfile 1KG_high_coverage_20130606_g1k_3202.merged \
+        --bmerge "${plink_input}" \
+        --make-bed \
+        --allow-no-sex \
+        --out "$merged" || {
+          echo "PLINK merge failed (likely due to triallelic SNPs)."
+          exit 1
+        }
+else
+  echo "Skipping merge — output ${merged}.bed already exists."
+fi
 
-echo "Merging with 1KG reference..."
-plink --bfile 1KG_high_coverage_20130606_g1k_3202.merged \
-      --bmerge "${plink_input}" \
-      --make-bed \
-      --out "1kg_${prefix}.merged" || {
-        echo "PLINK merge failed (likely due to triallelic SNPs)."
-        echo "See: https://www.cog-genomics.org/plink/1.9/data#merge"
-        exit 1
-      }
+# ---- Step 2: Missingness filter ---- #
+filtered="${merged}.geno.05.merged"
+if [ ! -f "${filtered}.bed" ]; then
+  echo "Checking SNP missingness..."
+  plink --bfile "$merged" --missing --out "$merged"
 
-echo "Checking SNP missingness..."
-plink --bfile "1kg_${prefix}.merged" --missing --out "1kg_${prefix}.merged"
+  missing_count=$(awk '$5 > 0.05' "${merged}.lmiss" | wc -l)
+  echo "Found $missing_count SNPs with missing rate > 5% — filtering..."
 
-missing_count=$(awk '$5 > 0.05' "1kg_${prefix}.merged.lmiss" | wc -l)
-echo "Found $missing_count SNPs with missing rate > 5% — filtering..."
+  plink --bfile "$merged" \
+        --geno 0.05 \
+        --make-bed \
+        --allow-no-sex \
+        --out "$filtered"
+else
+  echo "Skipping missingness filtering — output ${filtered}.bed already exists."
+fi
 
-plink --bfile "1kg_${prefix}.merged" \
-      --geno 0.05 \
-      --make-bed \
-      --out "1kg_${prefix}.geno.05.merged"
+# ---- Step 3: Pruning ---- #
+pruned="${filtered}.pruned"
+if [ ! -f "${pruned}.bed" ]; then
+  echo "Pruning SNPs..."
+  plink --bfile "$filtered" \
+        --indep-pairwise 50 10 0.1
 
-echo "Pruning SNPs..."
-plink --bfile "1kg_${prefix}.geno.05.merged" \
-      --indep-pairwise 50 10 0.1
+  plink --bfile "$filtered" \
+        --extract plink.prune.in \
+        --make-bed \
+        --allow-no-sex \
+        --out "$pruned"
+else
+  echo "Skipping pruning — output ${pruned}.bed already exists."
+fi
 
-plink --bfile "1kg_${prefix}.geno.05.merged" \
-      --extract plink.prune.in \
-      --make-bed \
-      --out "1kg_${prefix}.geno.05.merged.pruned"
+# ---- Step 4: Create .pop file ---- #
+popfile="${pruned}.pop"
+if [ ! -f "$popfile" ]; then
+  echo "Creating .pop file..."
+  awk '{
+    if ($1 ~ /con/ || $1 ~ /cas/) {
+      print "-";
+    } else {
+      print $1;
+    }
+  }' "${pruned}.fam" > "$popfile"
+else
+  echo "Skipping .pop file creation — $popfile already exists."
+fi
 
-echo "Creating .pop file based on RICOPILI formatted FID..."
-awk '{
-  if ($1 ~ /con/ || $1 ~ /cas/) {
-    print "-";
-  } else {
-    print $1;
-  }
-}' "1kg_${prefix}.geno.05.merged.pruned.fam" > "1kg_${prefix}.geno.05.merged.pruned.pop"
-
-# ---- Step 4: Run ADMIXTURE ---- #
-
-echo "Running ADMIXTURE with K=$K..."
-admixture --supervised --seed 666 -C 10 -j${THREADS} \
-          "1kg_${prefix}.geno.05.merged.pruned.bed" $K
+# ---- Step 5: Run ADMIXTURE ---- #
+qfile="${pruned}.${K}.Q"
+if [ ! -f "$qfile" ]; then
+  echo "Running ADMIXTURE with K=$K..."
+  admixture --supervised --seed 666 -C 5 -j${THREADS} "${pruned}.bed" $K
+else
+  echo "Skipping ADMIXTURE — $qfile already exists."
+fi
 
 echo "Finished."
 echo "Outputs:"
-echo "- ADMIXTURE Q file: 1kg_${prefix}.geno.05.merged.pruned.${K}.Q"
-echo "- Pop file:         1kg_${prefix}.geno.05.merged.pruned.pop"
-echo "- BED prefix:       1kg_${prefix}.geno.05.merged.pruned"
-echo "Next step: Run the R script to assign labels and visualize ancestry."
+echo "- ADMIXTURE Q file: $qfile"
+echo "- Pop file:         $popfile"
+echo "- BED prefix:       $pruned"
