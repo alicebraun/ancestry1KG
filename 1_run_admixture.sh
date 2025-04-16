@@ -7,6 +7,8 @@
 #SBATCH --time=05:00:00
 #SBATCH --mem=32G
 
+submit_dir="$(pwd)"
+
 set -euo pipefail
 
 echo "=============================================="
@@ -51,7 +53,7 @@ else
 fi
 
 # ---- Step 2: Missingness filter ---- #
-filtered="${merged}.geno.05.merged"
+filtered="${merged}.geno.05"
 if [ ! -f "${filtered}.bed" ]; then
   echo "Checking SNP missingness..."
   plink --bfile "$merged" --missing --out "$merged"
@@ -103,13 +105,32 @@ fi
 qfile="${pruned}.${K}.Q"
 if [ ! -f "$qfile" ]; then
   echo "Running ADMIXTURE with K=$K..."
-  admixture --supervised --seed 666 -C 5 -j${THREADS} "${pruned}.bed" $K
+  admixture --supervised --seed 666 -C 1 -j${THREADS} "${pruned}.bed" $K
 else
   echo "Skipping ADMIXTURE — $qfile already exists."
 fi
 
-echo "Finished."
+echo "Finished running ADMIXTURE."
 echo "Outputs:"
 echo "- ADMIXTURE Q file: $qfile"
 echo "- Pop file:         $popfile"
 echo "- BED prefix:       $pruned"
+
+# Run the R script
+echo "Loading R..."
+module load 2024
+module load Anaconda3/2024.06-1
+
+# Correct way to enable conda commands
+source /sw/arch/RHEL9/EB_production/2024/software/Anaconda3/2024.06-1/etc/profile.d/conda.sh
+source activate rp_env
+
+Rscript  2_ancestry_inference.R  "$submit_dir" "${prefix}.merged.geno.05.pruned" 
+
+# Check output
+if [ -f "1kg_${prefix}.merged.geno.05.pruned.Q.annotated" ]; then
+  echo "R script completed successfully. Output: 1kg_${prefix}.merged.geno.05.pruned.Q.annotated"
+else
+  echo "R script failed or output file missing."
+  exit 1
+fi

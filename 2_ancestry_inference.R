@@ -1,19 +1,18 @@
+args <- commandArgs(trailingOnly = TRUE)
+submit_dir <- args[1]
+prefix <- args[2]
+cat("Working directory:", submit_dir, "\n")
+cat("Prefix:", prefix, "\n")
+setwd(submit_dir)
+
 # Load necessary library
 library(dplyr)
 library(tidyr)
 
-# Define your prefix (from an environment variable or hardcoded)
-getwd()
-setwd("your_path_here")
-prefix <- "your_prefix"
-
-# Build base path
-base <- paste0(prefix, ".geno.05.merged.pruned")
-
 # Build file names
-fam_file <- paste0(base, ".fam")
-q_file   <- paste0(base, ".26.Q")
-pop_file <- paste0(base, ".pop")
+fam_file <- paste0("1kg_",prefix, ".fam")
+q_file   <- paste0("1kg_",prefix, ".26.Q")
+pop_file <- paste0("1kg_",prefix, ".pop")
 
 # Read each file
 fam <- read.table(fam_file, header = FALSE)
@@ -86,7 +85,6 @@ df <- df %>%
   arrange(Ancestry_Inf, desc(SortIndex)) %>%
   mutate(IID = factor(IID, levels = IID))
 
-cat("Annotated file saved as 'annotated_Q_file.txt'\n")
+write.table(df, paste0("1kg_",prefix,".Q.annotated"), quote = FALSE, row.names = FALSE, col.names = TRUE, sep = "\t")
 
-write.table(df, paste0(prefix,"_annotated_Q_file.txt"), quote = FALSE, row.names = FALSE, col.names = TRUE, sep = "\t")
 
