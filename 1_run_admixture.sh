@@ -17,7 +17,7 @@ echo "=============================================="
 
 # ---- Parse inputs (non-interactive) ---- #
 if [ "$#" -ne 2 ]; then
-  echo "Usage: sbatch $0 <plink_input_prefix> <output_prefix>"
+  echo "Usage: sbatch $0 <plink_input_prefix>.hg38.ch.fl <output_prefix>"
   exit 1
 fi
 
@@ -37,7 +37,7 @@ for ext in bed bim fam; do
 done
 
 # ---- Step 1: Merge ---- #
-merged="1kg_${prefix}.merged"
+merged="1kg_${prefix}"
 if [ ! -f "${merged}.bed" ]; then
   echo "Merging with 1KG reference..."
   plink --bfile 1KG_high_coverage_20130606_g1k_3202.merged \
@@ -45,7 +45,7 @@ if [ ! -f "${merged}.bed" ]; then
         --make-bed \
         --allow-no-sex \
         --out "$merged" || {
-          echo "PLINK merge failed (likely due to triallelic SNPs)."
+          echo "PLINK merge failed (likely due to triallelic SNPs etc.)."
           exit 1
         }
 else
@@ -91,10 +91,12 @@ popfile="${pruned}.pop"
 if [ ! -f "$popfile" ]; then
   echo "Creating .pop file..."
   awk '{
-    if ($1 ~ /con/ || $1 ~ /cas/) {
+    split($1, id, "*");
+    pop = (length(id) == 2) ? id[2] : $1;
+    if (pop ~ /con/ || pop ~ /cas/) {
       print "-";
     } else {
-      print $1;
+      print pop;
     }
   }' "${pruned}.fam" > "$popfile"
 else

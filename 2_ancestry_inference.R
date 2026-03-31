@@ -1,3 +1,4 @@
+# Read in files and working directory 
 args <- commandArgs(trailingOnly = TRUE)
 submit_dir <- args[1]
 prefix <- args[2]
@@ -7,12 +8,11 @@ setwd(submit_dir)
 
 # Load necessary library
 library(dplyr)
-library(tidyr)
 
 # Build file names
-fam_file <- paste0("1kg_",prefix, ".fam")
-q_file   <- paste0("1kg_",prefix, ".26.Q")
-pop_file <- paste0("1kg_",prefix, ".pop")
+fam_file <- paste0(prefix, ".fam")
+q_file   <- paste0(prefix, ".26.Q")
+pop_file <- paste0(prefix, ".pop")
 
 # Read each file
 fam <- read.table(fam_file, header = FALSE)
@@ -73,12 +73,12 @@ for (super in superpops) {
 df <- df %>%
   mutate(
     Ancestry_Inf = case_when(
-      SortIndex > 0.70 ~ gsub("^Q_", "", Max_Ancestry),
-      Q_AFR >= 0.70 ~ "AFR",
-      Q_AMR >= 0.70 ~ "AMR",
-      Q_EAS >= 0.70 ~ "EAS",
-      Q_EUR >= 0.70 ~ "EUR",
-      Q_SAS >= 0.70 ~ "SAS",
+      SortIndex > 0.90 ~ gsub("^Q_", "", Max_Ancestry),
+      Q_AFR >= 0.50 ~ "AFR",
+      Q_AMR >= 0.50 ~ "AMR",
+      Q_EAS >= 0.50 ~ "EAS",
+      Q_EUR >= 0.50 ~ "EUR",
+      Q_SAS >= 0.50 ~ "SAS",
       TRUE ~ "MIX"
     )
   ) %>%
