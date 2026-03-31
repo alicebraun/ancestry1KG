@@ -49,30 +49,37 @@ For more details check out the [ADMIXTURE manual](https://dalexander.github.io/a
 | SAS_PJL | Punjabi in Lahore                               | SAS (South Asian)      |
 | SAS_STU | Sri Lankan Tamil in the UK                      | SAS (South Asian)      |
 
+## Prerequisites
 ### PLINK 1.9
-
 To run the script you need PLINK 1.9 installed as a module on your HPC or manually and added to your bashrc.
 You can download PLINK 1.9 via https://www.cog-genomics.org/plink/ or conda/mamba: `conda install bioconda::plink`
 
-### R packages
+### R
+Base R along with the `dplyr` and `ggplot2` libraries.
 
-
-## Step 1: Prep PLINK files and run ADMIXTURE
-
-Ideally, files are QCed, e.g. using the [RICOPILI]()(https://github.com/Ripkelab/ricopili) `preimp_dir` and `pcaer` modules.
-
-This step performs merging, filtering for missingness (`--geno 0.05`), and pruning (`--indep-pairwise 50 10 0.1`) using PLINK 1.9.
-After merging and filtering ADMIXTURE is run using the following parameters: admixture--supervised--seed666-C1-j${THREADS}"${pruned}.bed" $K
-
+## Step 0: Prep PLINK files 
 ```bash
 # replace PLINK prefix and output filename
- sbatch 1_run_admixture.sh your_bfile your_outname
+ sbatch 0_align_1KG_hg38.sh <your_bfile> <your_outname> 
 ```
+If you have [RICOPILI]()(https://github.com/Ripkelab/ricopili) installed, run `0_align_1KG_hg38.sh`. This script starts a module that aligns to hg38 based on a reference (in this case `1KG_high_coverage_mm4_jan2025/`), aligns snp names based on positions and alleles, standardize indel coding, align alleles, and resolves strandflips.
 
-## Step 2: Mapping ancestry in R
+## Step 1: Merge with 1KG reference
+```bash
+# replace PLINK prefix and output filename
+ sbatch 1_run_admixture.sh <your_bfile>.hg38.ch.fl <your_outname> 
+```
+This step performs merging, filtering for missingness (`--geno 0.05`), and pruning (`--indep-pairwise 50 10 0.1`) using PLINK 1.9.
 
-T
+## Step 2: Run Admixture
+After merging and filtering ADMIXTURE is run using the supervised module.
 
+
+## Step 3: Mapping ancestry in R
+
+## Step 4: run PCA
+
+## Step 5: Plots
 ```
 
 ```

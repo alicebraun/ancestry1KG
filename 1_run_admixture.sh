@@ -91,12 +91,11 @@ popfile="${pruned}.pop"
 if [ ! -f "$popfile" ]; then
   echo "Creating .pop file..."
   awk '{
-    split($1, id, "*");
-    pop = (length(id) == 2) ? id[2] : $1;
-    if (pop ~ /con/ || pop ~ /cas/) {
+    if ($6 != -9) {
       print "-";
     } else {
-      print pop;
+      split($1, id, "*");
+      print (length(id) == 2) ? id[2] : $1;
     }
   }' "${pruned}.fam" > "$popfile"
 else
@@ -127,11 +126,12 @@ module load Anaconda3/2024.06-1
 source /sw/arch/RHEL9/EB_production/2024/software/Anaconda3/2024.06-1/etc/profile.d/conda.sh
 source activate rp_env
 
-Rscript  2_ancestry_inference.R  "$submit_dir" "${prefix}.merged.geno.05.pruned" 
+r_prefix="${pruned#1kg_}"
+Rscript 2_ancestry_inference.R "$submit_dir" "$r_prefix"
 
 # Check output
-if [ -f "1kg_${prefix}.merged.geno.05.pruned.Q.annotated" ]; then
-  echo "R script completed successfully. Output: 1kg_${prefix}.merged.geno.05.pruned.Q.annotated"
+if [ -f "1kg_${r_prefix}.Q.annotated" ]; then
+  echo "R script completed successfully. Output: 1kg_${r_prefix}.Q.annotated"
 else
   echo "R script failed or output file missing."
   exit 1

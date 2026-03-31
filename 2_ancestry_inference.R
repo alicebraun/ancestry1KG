@@ -10,9 +10,9 @@ setwd(submit_dir)
 library(dplyr)
 
 # Build file names
-fam_file <- paste0(prefix, ".fam")
-q_file   <- paste0(prefix, ".26.Q")
-pop_file <- paste0(prefix, ".pop")
+fam_file <- paste0("1kg_",prefix, ".fam")
+q_file   <- paste0("1kg_",prefix, ".26.Q")
+pop_file <- paste0("1kg_",prefix, ".pop")
 
 # Read each file
 fam <- read.table(fam_file, header = FALSE)

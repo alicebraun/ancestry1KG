@@ -33,7 +33,7 @@ df_long <- df %>%
                values_to = "Proportion")
 
 #palette used in the bar plot
-fill_colors <- scale_fill_discrete()$palette(5)
+fill_colors <- scales::hue_pal()(5)
 
 # Plot
 df_long %>% filter(grepl("cas|con", FID)) %>% ggplot(aes(x = IID, y = Proportion, fill = Ancestry_Component)) +
@@ -205,7 +205,7 @@ df_long <- df %>%
                values_to = "Proportion")
 
 #palette used in the bar plot
-fill_colors <- scale_fill_discrete()$palette(5)
+fill_colors <- scales::hue_pal()(5)
 
 # Plot
 df_long %>% filter(grepl("cas|con", FID)) %>% ggplot(aes(x = IID, y = Proportion, fill = Ancestry_Component)) +
