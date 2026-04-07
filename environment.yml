@@ -1,0 +1,15 @@
+name: admix_r
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - r-base>=4.1
+  - r-dplyr
+  - r-ggplot2
+  - r-tidyr
+  - r-patchwork
+  - r-data.table
+  - r-scales
+  - bioconductor-biocmanager  # optional, for any Bioconductor packages
+  - plink=1.9                 # PLINK 1.9 for genotype QC and merging

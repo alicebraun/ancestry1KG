@@ -79,6 +79,7 @@ if [ ! -f "${pruned}.bed" ]; then
 
   plink --bfile "$filtered" \
         --extract plink.prune.in \
+        --mind 0.1 \
         --make-bed \
         --allow-no-sex \
         --out "$pruned"
@@ -91,11 +92,10 @@ popfile="${pruned}.pop"
 if [ ! -f "$popfile" ]; then
   echo "Creating .pop file..."
   awk '{
-    if ($6 != -9) {
-      print "-";
+    if ($1 ~ /^(AFR|AMR|EAS|EUR|SAS)_/) {
+      print $1;
     } else {
-      split($1, id, "*");
-      print (length(id) == 2) ? id[2] : $1;
+      print "-";
     }
   }' "${pruned}.fam" > "$popfile"
 else
@@ -124,10 +124,10 @@ module load Anaconda3/2024.06-1
 
 # Correct way to enable conda commands
 source /sw/arch/RHEL9/EB_production/2024/software/Anaconda3/2024.06-1/etc/profile.d/conda.sh
-source activate rp_env
+conda activate admix_r
 
 r_prefix="${pruned#1kg_}"
-Rscript 2_ancestry_inference.R "$submit_dir" "$r_prefix"
+Rscript 1b_ancestry_inference.R "$submit_dir" "$r_prefix"
 
 # Check output
 if [ -f "1kg_${r_prefix}.Q.annotated" ]; then

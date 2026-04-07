@@ -1,348 +1,167 @@
-# Load necessary library
+# Load necessary libraries
 library(dplyr)
 library(ggplot2)
 library(tidyr)
+library(patchwork)   # for two-panel PCA plots
 
 args <- commandArgs(trailingOnly = TRUE)
-submit_dir <- args[1]
-prefix <- args[2]
+
+if (length(args) < 3) {
+  stop("Usage: Rscript 3_plots.R <outname> <submit_dir> <pca_file>\n  e.g. Rscript 3_plots.R clz2a /path/to/anc clz2a.menv.mds")
+}
+
+outname    <- args[1]
+submit_dir <- args[2]
+mds_file   <- args[3]
+prefix     <- paste0("1kg_", outname, ".geno.05.pruned")
+
 cat("Working directory:", submit_dir, "\n")
-cat("Prefix:", prefix, "\n")
+cat("Outname:", outname, "\n")
+cat("Q.annotated prefix:", prefix, "\n")
+cat("PCA file:", mds_file, "\n")
 setwd(submit_dir)
 
 
-# Load data
-df <- read.table(paste0(prefix,".Q.annotated"),
-                 header = TRUE, 
-                 sep = "\t", 
-                 quote = "", 
+# ============================================================ #
+#  Ancestry barplot (inferred samples only)
+# ============================================================ #
+
+df <- read.table(paste0(prefix, ".Q.annotated"),
+                 header = TRUE, sep = "\t", quote = "",
                  stringsAsFactors = FALSE)
 
+included_components <- intersect(
+  c("Q_AFR", "Q_AMR", "Q_EAS", "Q_EUR", "Q_SAS"),
+  names(df)
+)
 
-# Define the components you want to include in the plot
-included_components <- c("Q_AFR", "Q_AMR", "Q_EAS", "Q_EUR", "Q_SAS")
-
-# Ensure those columns exist (optional but safe)
-included_components <- intersect(included_components, names(df))
-
-# Reshape only those ancestry components for plotting
 df_long <- df %>%
-  select(FID, IID, all_of(included_components)) %>%
+  select(FID, IID, Ancestry_Pheno, all_of(included_components)) %>%
   pivot_longer(cols = all_of(included_components),
-               names_to = "Ancestry_Component",
+               names_to  = "Ancestry_Component",
                values_to = "Proportion")
 
-#palette used in the bar plot
-fill_colors <- scales::hue_pal()(5)
+fill_colors <- scales::hue_pal()(length(included_components))
 
-# Plot
-df_long %>% filter(grepl("cas|con", FID)) %>% ggplot(aes(x = IID, y = Proportion, fill = Ancestry_Component)) +
+p_bar <- df_long %>%
+  filter(Ancestry_Pheno == "-") %>%
+  ggplot(aes(x = IID, y = Proportion, fill = Ancestry_Component)) +
   geom_bar(stat = "identity", width = 1) +
+  scale_fill_manual(values = fill_colors) +
   theme_minimal(base_size = 12) +
   theme(
-    axis.text.x = element_blank(),
+    axis.text.x  = element_blank(),
     axis.ticks.x = element_blank(),
-    panel.grid = element_blank(),
+    panel.grid   = element_blank(),
     legend.position = "right",
-    plot.background = element_rect(fill = "white", color = "white"),  # Set white background
-    panel.background = element_rect(fill = "white", color = "white")  # Ensure panel is white as well
-  ) + scale_fill_manual(values = fill_colors)  +
-  labs(title = "Ancestry Proportions per Individual", x = "Individuals", y = "Proportion") -> p1
+    plot.background  = element_rect(fill = "white", color = "white"),
+    panel.background = element_rect(fill = "white", color = "white")
+  ) +
+  labs(title = "Ancestry Proportions per Individual",
+       x = "Individuals", y = "Proportion")
 
-# Save the plot
-ggsave(paste0(prefix,"_barplot.jpeg"), plot = p1, width = 12, height = 6, dpi = 600, device = "jpeg")
+ggsave(paste0(prefix, "_barplot.jpeg"),
+       plot = p_bar, width = 12, height = 6, dpi = 600, device = "jpeg")
 
 
-# Load the pca covariate file
-mds_file <- args[3]
+# ============================================================ #
+#  Load PCA and merge with annotated Q file
+# ============================================================ #
 
-# Check if the file exists
-if (!file.exists(mds_file)) {
-  stop(paste("The specified PCA file does not exist:", mds_file))
+pca_data <- read.table(mds_file, header = TRUE, stringsAsFactors = FALSE)
+cat("Loaded PCA file:", nrow(pca_data), "rows,", ncol(pca_data), "columns\n")
+
+# Normalise column names:
+#   pcaer/PLINK2 may write "#FID" as first column header
+#   pcaer MDS files use MDS1, MDS2, ... — rename to C1, C2, ... for consistency
+names(pca_data) <- sub("^X\\.", "", names(pca_data))   # R turns "#FID" into "X.FID"
+names(pca_data) <- sub("^#", "", names(pca_data))       # strip any remaining leading #
+names(pca_data) <- gsub("^MDS([0-9]+)$", "C\\1", names(pca_data))
+names(pca_data) <- gsub("^PC([0-9]+)$",  "C\\1", names(pca_data))
+cat("PCA column names:", paste(names(pca_data), collapse = ", "), "\n")
+cat("Q.annotated FID examples:", paste(head(df$FID, 3), collapse = ", "), "\n")
+cat("PCA FID examples:        ", paste(head(pca_data$FID, 3), collapse = ", "), "\n")
+
+merged_data <- pca_data %>%
+  inner_join(df, by = "IID")
+
+if (nrow(merged_data) == 0) {
+  stop(paste0(
+    "inner_join returned 0 rows — IID values do not match between the ",
+    "PCA file and the Q.annotated file.\n",
+    "  PCA IID examples: ", paste(head(pca_data$IID, 5), collapse = ", "), "\n",
+    "  Q   IID examples: ", paste(head(df$IID, 5), collapse = ", ")
+  ))
 }
 
-# Read in the PCA/PCoA covariate data
-pca_data <- read.table(mds_file, header = TRUE, stringsAsFactors = FALSE)
-
-cat("Successfully loaded PCA covariate file with", nrow(pca_data), "rows and", ncol(pca_data), "columns.\n")
-
-
-# Merge the PCs and annotad Q.file on FID and IID
-merged_data <- pca_data %>%
-  inner_join(df, by = c("FID", "IID"))
-
-# Create a new column for the prefix (e.g., AFR, EUR)
-merged_data$Ancestry_Prefix <- gsub("Q_([A-Za-z]+)_.*", "\\1", merged_data$Ancestry_Inf)  # Extract prefix
-head(merged_data)
-# Create the scatter plot
-#merged_data %>% filter(Ancestry_Inf != "MIX") %>% ggplot(aes(x = C1, y = C2, color = Max_Ancestry, shape = Ancestry_Prefix)) +
-#merged_data %>% ggplot(aes(x = C1, y = C2, color = Max_Ancestry, shape = Ancestry_Prefix)) +
-#  geom_point(size = 2, alpha = 0.8) +
-#  theme_minimal(base_size = 12) +
-#  labs(title = "PC1 vs PC2 with inferred Ancestry", x = "PC1 (C1)", y = "PC2 (C2)", color = "Ancestry_Inf", shape = "Ancestry Prefix") +
-#    scale_shape_manual(values = c("AFR" = 16, "AMR" = 17, "EAS" = 8, "EUR" = 19, "SAS" = 20, "MIX" = 5)) +  # Shape per prefix
-#  theme(legend.position = "right",
-#        plot.background = element_rect(fill = "white", color = "white"),
-#        panel.background = element_rect(fill = "white", color = "white"))
-# Optional: Save the plot as a JPEG image
-#ggsave(paste0(prefix,"_pcaplot.jpeg"), width = 8, height = 6, dpi = 600, device = "jpeg")
-
-
-# Merge the PCs and annotated Q.file on FID and IID
-merged_data <- pca_data %>%
-  inner_join(df, by = c("FID", "IID"))
-
-# Create a new column for the prefix (e.g., AFR, EUR)
-#merged_data$Ancestry_Prefix <- gsub("Q_([A-Za-z]+)_.*", "\\1", merged_data$Ancestry_Inf)
+# Ancestry superpopulation prefix (AFR, EUR, EAS, AMR, SAS, MIX)
 merged_data$Ancestry_Prefix <- sub("^([A-Z]+)_.*", "\\1", merged_data$Ancestry_Inf)
-unique(merged_data$Ancestry_Prefix)
-# Create the scatter plot
 
-# Assign shape group
-merged_data$shape <- ifelse(grepl("mis", merged_data$FID), "1KG", "inferred")
+# Label 1KG reference vs samples being inferred.
+# Ancestry_Pheno comes from the .pop file: "-" = sample to infer, anything else = 1KG reference.
+merged_data$Group <- ifelse(merged_data$Ancestry_Pheno == "-", "Inferred", "1KG")
 
+cat("Ancestry prefixes found:", paste(unique(merged_data$Ancestry_Prefix), collapse = ", "), "\n")
+cat("Group counts:\n")
+print(table(merged_data$Group))
 
-# PCs to loop over
+# Shared colour scale so both panels use identical colours
+ancestry_levels <- sort(unique(merged_data$Ancestry_Prefix))
+ancestry_colors <- setNames(scales::hue_pal()(length(ancestry_levels)), ancestry_levels)
+
 pcs <- c("C2", "C3", "C4", "C5")
 
-for (pc in pcs) {
-  # ----- Non-MIX plot ----- #
-  p_nonmix <- ggplot() +
-    geom_point(
-      data = merged_data %>% filter(shape == "1KG"),
-      aes_string(x = "C1", y = pc, color = "Ancestry_Prefix", shape = "shape"),
-      size = 1,
-      alpha = 0.5
-    ) +
-    geom_point(
-      data = merged_data %>% filter(Ancestry_Inf != "MIX", shape == "inferred"),
-      aes_string(x = "C1", y = pc, color = "Ancestry_Prefix", shape = "shape"),
-      size = 1
-    ) +
-    scale_shape_manual(values = c("1KG" = 1, "inferred" = 6)) +
-    theme_minimal(base_size = 12) +
-    labs(
-      title = paste0("PC1 vs ", pc, " with inferred Ancestry (No MIX)"),
-      x = "PC1 (C1)", y = paste0(pc, " (", pc, ")"),
-      color = "Ancestry Prefix",
-      shape = "Reference"
-    ) +
-    theme(
-      legend.position = "right",
-      plot.background = element_rect(fill = "white", color = "white"),
-      panel.background = element_rect(fill = "white", color = "white")
-    )
 
-  ggsave(paste0(prefix, "_pca_plot_PC1_vs_", pc, "_nomix.jpeg"), p_nonmix, width = 8, height = 6, dpi = 600, device = "jpeg")
-
-  # ----- MIX plot ----- #
-  p_mix <- ggplot() +
-    geom_point(
-      data = merged_data %>% filter(shape == "1KG"),
-      aes_string(x = "C1", y = pc, color = "Ancestry_Prefix", shape = "shape"),
-      size = 1,
-      alpha = 0.3
-    ) +
-    geom_point(
-      data = merged_data %>% filter(Ancestry_Inf == "MIX", shape == "inferred"),
-      aes_string(x = "C1", y = pc, color = "Ancestry_Prefix", shape = "shape"),
-      size = 1
-    ) +
-    scale_shape_manual(values = c("1KG" = 1, "inferred" = 6)) +
-    theme_minimal(base_size = 12) +
-    labs(
-      title = paste0("PC1 vs ", pc, " with inferred Ancestry (MIX only)"),
-      x = "PC1 (C1)", y = paste0(pc, " (", pc, ")"),
-      color = "Ancestry Prefix",
-      shape = "Reference"
-    ) +
-    theme(
-      legend.position = "right",
-      plot.background = element_rect(fill = "white", color = "white"),
-      panel.background = element_rect(fill = "white", color = "white")
-    )
-
-  ggsave(paste0(prefix, "_pca_plot_PC1_vs_", pc, "_mix.jpeg"), p_mix, width = 8, height = 6, dpi = 600, device = "jpeg")
-}
-
-
-summary(merged_data[, c("C1", "C2", "C3", "C4", "C5")])
-merged_data %>% filter(is.na(C1) | is.na(C3) | is.na(C4) | is.na(C5)) %>% nrow()
-
-
-# Load necessary library
-library(dplyr)
-library(ggplot2)
-library(tidyr)
-
-args <- commandArgs(trailingOnly = TRUE)
-submit_dir <- args[1]
-prefix <- args[2]
-cat("Working directory:", submit_dir, "\n")
-cat("Prefix:", prefix, "\n")
-setwd(submit_dir)
-
-
-# Load data
-df <- read.table(paste0(prefix,".Q.annotated"),
-                 header = TRUE, 
-                 sep = "\t", 
-                 quote = "", 
-                 stringsAsFactors = FALSE)
-
-
-# Define the components you want to include in the plot
-included_components <- c("Q_AFR", "Q_AMR", "Q_EAS", "Q_EUR", "Q_SAS")
-
-# Ensure those columns exist (optional but safe)
-included_components <- intersect(included_components, names(df))
-
-# Reshape only those ancestry components for plotting
-df_long <- df %>%
-  select(FID, IID, all_of(included_components)) %>%
-  pivot_longer(cols = all_of(included_components),
-               names_to = "Ancestry_Component",
-               values_to = "Proportion")
-
-#palette used in the bar plot
-fill_colors <- scales::hue_pal()(5)
-
-# Plot
-df_long %>% filter(grepl("cas|con", FID)) %>% ggplot(aes(x = IID, y = Proportion, fill = Ancestry_Component)) +
-  geom_bar(stat = "identity", width = 1) +
-  theme_minimal(base_size = 12) +
-  theme(
-    axis.text.x = element_blank(),
-    axis.ticks.x = element_blank(),
-    panel.grid = element_blank(),
-    legend.position = "right",
-    plot.background = element_rect(fill = "white", color = "white"),  # Set white background
-    panel.background = element_rect(fill = "white", color = "white")  # Ensure panel is white as well
-  ) + scale_fill_manual(values = fill_colors)  +
-  labs(title = "Ancestry Proportions per Individual", x = "Individuals", y = "Proportion") -> p1
-
-# Save the plot
-ggsave(paste0(prefix,"_barplot.jpeg"), plot = p1, width = 12, height = 6, dpi = 600, device = "jpeg")
-
-
-# Load the pca covariate file
-mds_file <- args[3]
-
-# Check if the file exists
-if (!file.exists(mds_file)) {
-  stop(paste("The specified PCA file does not exist:", mds_file))
-}
-
-# Read in the PCA/PCoA covariate data
-pca_data <- read.table(mds_file, header = TRUE, stringsAsFactors = FALSE)
-
-cat("Successfully loaded PCA covariate file with", nrow(pca_data), "rows and", ncol(pca_data), "columns.\n")
-
-
-# Merge the PCs and annotad Q.file on FID and IID
-merged_data <- pca_data %>%
-  inner_join(df, by = c("FID", "IID"))
-
-# Create a new column for the prefix (e.g., AFR, EUR)
-merged_data$Ancestry_Prefix <- gsub("Q_([A-Za-z]+)_.*", "\\1", merged_data$Ancestry_Inf)  # Extract prefix
-head(merged_data)
-# Create the scatter plot
-#merged_data %>% filter(Ancestry_Inf != "MIX") %>% ggplot(aes(x = C1, y = C2, color = Max_Ancestry, shape = Ancestry_Prefix)) +
-#merged_data %>% ggplot(aes(x = C1, y = C2, color = Max_Ancestry, shape = Ancestry_Prefix)) +
-#  geom_point(size = 2, alpha = 0.8) +
-#  theme_minimal(base_size = 12) +
-#  labs(title = "PC1 vs PC2 with inferred Ancestry", x = "PC1 (C1)", y = "PC2 (C2)", color = "Ancestry_Inf", shape = "Ancestry Prefix") +
-#    scale_shape_manual(values = c("AFR" = 16, "AMR" = 17, "EAS" = 8, "EUR" = 19, "SAS" = 20, "MIX" = 5)) +  # Shape per prefix
-#  theme(legend.position = "right",
-#        plot.background = element_rect(fill = "white", color = "white"),
-#        panel.background = element_rect(fill = "white", color = "white"))
-# Optional: Save the plot as a JPEG image
-#ggsave(paste0(prefix,"_pcaplot.jpeg"), width = 8, height = 6, dpi = 600, device = "jpeg")
-
-
-# Merge the PCs and annotated Q.file on FID and IID
-merged_data <- pca_data %>%
-  inner_join(df, by = c("FID", "IID"))
-
-# Create a new column for the prefix (e.g., AFR, EUR)
-#merged_data$Ancestry_Prefix <- gsub("Q_([A-Za-z]+)_.*", "\\1", merged_data$Ancestry_Inf)
-merged_data$Ancestry_Prefix <- sub("^([A-Z]+)_.*", "\\1", merged_data$Ancestry_Inf)
-unique(merged_data$Ancestry_Prefix)
-# Create the scatter plot
-
-# Assign shape group
-merged_data$shape <- ifelse(grepl("mis", merged_data$FID), "1KG", "inferred")
-
-
-# PCs to loop over
-pcs <- c("C2", "C3", "C4", "C5")
+# ============================================================ #
+#  PCA plots — two separate panels (1KG | Inferred)
+# ============================================================ #
 
 for (pc in pcs) {
-  # ----- Non-MIX plot ----- #
-  p_nonmix <- ggplot() +
-    geom_point(
-      data = merged_data %>% filter(shape == "1KG"),
-      aes_string(x = "C1", y = pc, color = "Ancestry_Prefix", shape = "shape"),
-      size = 1,
-      alpha = 0.5
-    ) +
-    geom_point(
-      data = merged_data %>% filter(Ancestry_Inf != "MIX", shape == "inferred"),
-      aes_string(x = "C1", y = pc, color = "Ancestry_Prefix", shape = "shape"),
-      size = 1
-    ) +
-    scale_shape_manual(values = c("1KG" = 1, "inferred" = 6)) +
+
+  # Shared axis limits across both groups so panels are directly comparable
+  x_range <- range(merged_data$C1,          na.rm = TRUE)
+  y_range <- range(merged_data[[pc]], na.rm = TRUE)
+
+  shared_coords <- coord_cartesian(xlim = x_range, ylim = y_range)
+
+  # ---------- Left panel: 1KG reference ---------- #
+  p_1kg <- ggplot(
+    merged_data %>% filter(Group == "1KG"),
+    aes(x = C1, y = .data[[pc]], color = Ancestry_Prefix)
+  ) +
+    geom_point(shape = 17, size = 1, alpha = 0.7) +
+    scale_color_manual(values = ancestry_colors, drop = FALSE) +
+    shared_coords +
     theme_minimal(base_size = 12) +
-    labs(
-      title = paste0("PC1 vs ", pc, " with inferred Ancestry (No MIX)"),
-      x = "PC1 (C1)", y = paste0(pc, " (", pc, ")"),
-      color = "Ancestry Prefix",
-      shape = "Reference"
-    ) +
+    labs(title = "1KG Reference", x = "PC1", y = pc, color = "Ancestry") +
     theme(
-      legend.position = "right",
-      plot.background = element_rect(fill = "white", color = "white"),
+      legend.position  = "none",
+      plot.background  = element_rect(fill = "white", color = "white"),
       panel.background = element_rect(fill = "white", color = "white")
     )
 
-  ggsave(paste0(prefix, "_pca_plot_PC1_vs_", pc, "_nomix.jpeg"), p_nonmix, width = 8, height = 6, dpi = 600, device = "jpeg")
-}
-  for (pc in pcs) {
-  p_mis_colored <- ggplot() +
-    # Gray dots for all non-"mis" individuals
-    geom_point(
-      data = merged_data %>% filter(!grepl("mis", FID)),
-      aes_string(x = "C1", y = pc),
-      color = "gray70",
-      shape = 16,
-      size = 1,
-      alpha = 0.5
-    ) +
-    # Colored triangles for "mis" individuals
-    geom_point(
-      data = merged_data %>% filter(grepl("mis", FID)),
-      aes_string(x = "C1", y = pc, color = "Ancestry_Prefix"),
-      shape = 17,
-      size = 1,
-        alpha = 0.5
-    ) +
+  # ---------- Right panel: Inferred samples ---------- #
+  p_inf <- ggplot(
+    merged_data %>% filter(Group == "Inferred"),
+    aes(x = C1, y = .data[[pc]], color = Ancestry_Prefix)
+  ) +
+    geom_point(shape = 16, size = 1, alpha = 0.7) +
+    scale_color_manual(values = ancestry_colors, drop = FALSE) +
+    shared_coords +
     theme_minimal(base_size = 12) +
-    labs(
-      title = paste0("PC1 vs ", pc, ": 1KG individuals colored by ancestry"),
-      x = "PC1 (C1)", y = paste0(pc, " (", pc, ")"),
-      color = "Ancestry Prefix"
-    ) +
+    labs(title = "Inferred Ancestry", x = "PC1", y = pc, color = "Ancestry") +
     theme(
-      legend.position = "right",
-      plot.background = element_rect(fill = "white", color = "white"),
+      legend.position  = "right",
+      plot.background  = element_rect(fill = "white", color = "white"),
       panel.background = element_rect(fill = "white", color = "white")
     )
+
+  p_panels <- p_1kg + p_inf +
+    plot_layout(ncol = 2, guides = "collect") +
+    plot_annotation(title = paste0("PC1 vs ", pc))
 
   ggsave(
-    paste0(prefix, "_pca_plot_PC1_vs_", pc, "_mis_colored.jpeg"),
-    p_mis_colored,
-    width = 8, height = 6,
-    dpi = 600,
-    device = "jpeg"
+    paste0(prefix, "_pca_plot_PC1_vs_", pc, "_panels.jpeg"),
+    p_panels, width = 16, height = 6, dpi = 600, device = "jpeg"
   )
 }

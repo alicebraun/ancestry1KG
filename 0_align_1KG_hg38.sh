@@ -13,7 +13,6 @@ echo "=============================================="
 echo "  1KG hg38 Alignment (impute_dirsub)          "
 echo "=============================================="
 
-# ---- Parse inputs ---- #
 if [ "$#" -ne 2 ]; then
   echo "Usage: sbatch $0 <plink_input_prefix> <outname>"
   echo "  <plink_input_prefix>  : full path prefix to input .bed/.bim/.fam"
@@ -38,24 +37,29 @@ done
 # ---- Run impute_dirsub alignment ---- #
 # Must run from the directory containing the PLINK files
 plink_dir="$(dirname "$plink_input")"
-plink_base="$(basename "$plink_input")"
 
-echo "Running impute_dirsub --onlyalign from: $plink_dir"
+plink_base="$(basename "$plink_input")"
 cd "$plink_dir"
 
-impute_dirsub \
-  --refdir /gpfs/work5/0/pgcdac/imputation_references/1KG_high_coverage_mm4_jan2025/ \
-  --outname "$outname" \
-  --onlyalign \
-  --serial
+if [ -f "pi_sub/${plink_base}.hg38.ch.fl.bed" ]; then
+  echo "Skipping impute_dirsub — pi_sub/${plink_base}.hg38.ch.fl.bed already exists."
+else
+  echo "Running impute_dirsub --onlyalign from: $plink_dir"
+  impute_dirsub \
+    --refdir /gpfs/work5/0/pgcdac/imputation_references/1KG_high_coverage_mm4_jan2025/ \
+    --outname "$outname" \
+    --onlyalign
+fi
 
-# ---- Symlink aligned output files into ancestry1KG directory ---- #
+# ---- Symlink aligned output files back into working directory ---- #
+# impute_dirsub names output files after the input filename, not --outname.
+# Only symlink the input dataset (not the reference which also gets aligned).
 echo "Looking for aligned files in pi_sub/..."
 
-aligned_files=$(ls pi_sub/${outname}*.hg38.ch.fl.bed 2>/dev/null | sed 's/\.bed$//' || true)
+aligned_files=$(ls "pi_sub/${plink_base}.hg38.ch.fl.bed" 2>/dev/null | sed 's/\.bed$//' || true)
 
 if [ -z "$aligned_files" ]; then
-  echo "Error: No files matching pi_sub/${outname}*.hg38.ch.fl.bed found."
+  echo "Error: pi_sub/${plink_base}.hg38.ch.fl.bed not found."
   echo "Contents of pi_sub/:"
   ls pi_sub/ || true
   exit 1
@@ -67,7 +71,7 @@ echo "Symlinking aligned files into $(pwd)..."
 for f in $aligned_files; do
   base="$(basename "$f")"
   for ext in bed bim fam; do
-    ln -sf "${plink_dir}/pi_sub/${base}.${ext}" "${base}.${ext}"
+    ln -sf "pi_sub/${base}.${ext}" "${base}.${ext}"
     echo "  Linked: ${base}.${ext}"
   done
 done
@@ -78,5 +82,5 @@ for f in $aligned_files; do
   echo "  $(basename "$f")"
 done
 echo ""
-echo "Next step — run the ADMIXTURE pipeline:"
+echo "Next step:"
 echo "  sbatch 1_run_admixture.sh <aligned_prefix> <output_prefix>"
