@@ -128,7 +128,7 @@ Steps performed automatically:
 **RICOPILI:**
 ```bash
 sbatch 2_pca.sh 1kg_<output_prefix> <pca_outname>
-# output: {pca_outname}.menv.mds_cov (copied to working dir)
+# output: {pca_outname}.menv.mds_cov (copied to working dir - hopefully)
 ```
 
 **Standalone:**

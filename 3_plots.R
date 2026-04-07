@@ -35,11 +35,21 @@ included_components <- intersect(
   names(df)
 )
 
+df_inferred <- df %>%
+  filter(Ancestry_Pheno == "-") %>%
+  select(FID, IID, all_of(included_components))
+
+# Sort individuals: primary sort by dominant component, secondary by its proportion
+dominant <- apply(df_inferred[, included_components, drop = FALSE], 1, which.max)
+dom_prop  <- apply(df_inferred[, included_components, drop = FALSE], 1, max)
+iid_order <- df_inferred$IID[order(dominant, -dom_prop)]
+
 df_long <- df %>%
   select(FID, IID, Ancestry_Pheno, all_of(included_components)) %>%
   pivot_longer(cols = all_of(included_components),
                names_to  = "Ancestry_Component",
-               values_to = "Proportion")
+               values_to = "Proportion") %>%
+  mutate(IID = factor(IID, levels = iid_order))
 
 fill_colors <- scales::hue_pal()(length(included_components))
 
