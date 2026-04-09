@@ -4,7 +4,7 @@
 #SBATCH --error=tmp/align_%j.err
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
-#SBATCH --time=02:00:00
+#SBATCH --time=08:00:00
 #SBATCH --mem=16G
 
 set -euo pipefail
@@ -25,6 +25,16 @@ outname="$2"
 ancestry_dir="$(pwd)"
 
 mkdir -p tmp
+
+# ---- Symlink 1KG reference files if not already present ---- #
+REF_SOURCE="/gpfs/work5/0/pgcdac/DWFV2CJb8Piv_0116_pgc_data/pgcdrc/scz/working/1KG_pca/2_output"
+for ext in bed bim fam; do
+  ref="1KG_high_coverage_20130606_g1k_3202.merged.${ext}"
+  if [[ ! -f "$ref" && ! -L "$ref" ]]; then
+    echo "Symlinking ${ref}..."
+    ln -s "${REF_SOURCE}/${ref}" .
+  fi
+done
 
 # ---- Validate input files ---- #
 for ext in bed bim fam; do
@@ -50,6 +60,23 @@ else
     --outname "$outname" \
     --onlyalign
 fi
+
+# ---- Wait for impute_dirsub sub-jobs to complete ---- #
+# impute_dirsub spawns its own SLURM sub-jobs and returns immediately.
+# Poll for flipping_done (last stage) before proceeding.
+echo "Waiting for impute_dirsub sub-jobs (polling for flipping_done)..."
+MAX_WAIT=25200  # 7 hours
+WAITED=0
+while [ ! -f "flipping_done" ]; do
+  sleep 120
+  WAITED=$((WAITED + 120))
+  echo "  ...still waiting (${WAITED}s elapsed)"
+  if [ "$WAITED" -ge "$MAX_WAIT" ]; then
+    echo "Error: timed out waiting for flipping_done after ${MAX_WAIT}s"
+    exit 1
+  fi
+done
+echo "impute_dirsub complete."
 
 # ---- Symlink aligned output files back into working directory ---- #
 # impute_dirsub names output files after the input filename, not --outname.

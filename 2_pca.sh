@@ -4,7 +4,7 @@
 #SBATCH --error=tmp/pca_%j.err
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
-#SBATCH --time=01:00:00
+#SBATCH --time=04:00:00
 #SBATCH --mem=16G
 
 set -euo pipefail
@@ -35,16 +35,33 @@ for ext in bed bim fam; do
 done
 
 # ---- Initialise QC directory and run pcaer ---- #
-# Use absolute path for bim since pcaer runs from qc/
-abs_bim="$(pwd)/${plink_input}.geno.05.pruned.bim"
+# id_tager_2 creates qc/ with symlinks to bim/bed; pcaer must be run from qc/
+# and given just the filename (it prepends CWD itself)
 id_tager_2 --create --nn scz_${outname}_mix ${plink_input}.geno.05.pruned.fam
 cd qc
-pcaer "${abs_bim}" --out ${outname}
+pcaer "${plink_input}.geno.05.pruned.bim" --out ${outname}
 cd ..
 
-# ---- Copy PCA output to working directory ---- #
-mds_file=$(ls qc/${outname}*.menv.mds_cov 2>/dev/null | head -1 || true)
+# ---- Wait for pcaer sub-jobs to complete ---- #
+# pcaer spawns its own SLURM sub-jobs and returns immediately.
+# Poll until the .menv.mds_cov file appears in qc/.
+echo "Waiting for pcaer sub-jobs (polling for .menv.mds_cov)..."
+MAX_WAIT=10800  # 3 hours
+WAITED=0
+while true; do
+  mds_file=$(ls qc/${outname}*.menv.mds_cov 2>/dev/null | head -1 || true)
+  [ -n "$mds_file" ] && break
+  sleep 120
+  WAITED=$((WAITED + 120))
+  echo "  ...still waiting (${WAITED}s elapsed)"
+  if [ "$WAITED" -ge "$MAX_WAIT" ]; then
+    echo "Error: timed out waiting for pcaer output after ${MAX_WAIT}s"
+    exit 1
+  fi
+done
+echo "pcaer complete."
 
+# ---- Copy PCA output to working directory ---- #
 if [ -z "$mds_file" ]; then
   echo "Warning: no .menv.mds_cov file found in qc/ — check pcaer output manually."
 else

@@ -83,12 +83,17 @@ else
   done
 fi
 
-# ---- Reference files ---- #
+# ---- Reference files (auto-symlink if missing) ---- #
 echo ""
 echo "Reference files (expected in working directory):"
 REF_BASE="1KG_high_coverage_20130606_g1k_3202.merged"
+REF_SOURCE="/gpfs/work5/0/pgcdac/DWFV2CJb8Piv_0116_pgc_data/pgcdrc/scz/working/1KG_pca/2_output"
 for ext in bed bim fam; do
   f="${REF_BASE}.${ext}"
+  if [[ ! -f "$f" && ! -L "$f" ]]; then
+    echo "  Symlinking ${f}..."
+    ln -s "${REF_SOURCE}/${f}" .
+  fi
   if [ -f "$f" ]; then
     size=$(du -sh "$f" | cut -f1)
     check_ok "${f}  (${size})"
@@ -281,7 +286,7 @@ if [ -z "\$pca_file" ]; then
   exit 1
 fi
 
-Rscript ${SCRIPT_DIR}/3_plots.R \$(pwd) 1kg_${OUTNAME}.geno.05.pruned "\$pca_file"
+Rscript ${SCRIPT_DIR}/3_plots.R ${OUTNAME} \$(pwd) "\$pca_file"
 EOF
 chmod +x "${PLOTS_WRAPPER}"
 

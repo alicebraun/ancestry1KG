@@ -45,6 +45,16 @@ ancestry_dir="$(pwd)"
 
 mkdir -p tmp
 
+# ---- Symlink 1KG reference files if not already present ---- #
+REF_SOURCE="/gpfs/work5/0/pgcdac/DWFV2CJb8Piv_0116_pgc_data/pgcdrc/scz/working/1KG_pca/2_output"
+for ext in bed bim fam; do
+  ref="1KG_high_coverage_20130606_g1k_3202.merged.${ext}"
+  if [[ ! -f "$ref" && ! -L "$ref" ]]; then
+    echo "Symlinking ${ref}..."
+    ln -s "${REF_SOURCE}/${ref}" .
+  fi
+done
+
 # ---- Validate inputs ---- #
 for ext in bed bim fam; do
   [ -f "${plink_input}.${ext}" ] || { echo "Error: ${plink_input}.${ext} not found!"; exit 1; }
