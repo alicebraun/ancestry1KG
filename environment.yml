@@ -11,5 +11,5 @@ dependencies:
   - r-patchwork
   - r-data.table
   - r-scales
-  - bioconductor-biocmanager  # optional, for any Bioconductor packages
-  - plink=1.9                 # PLINK 1.9 for genotype QC and merging
+  - biocmanager  # optional, for any Bioconductor packages
+  - plink=1.9    # PLINK 1.9 for genotype QC and merging if not installed on system
